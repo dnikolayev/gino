@@ -12,30 +12,16 @@ on:
 jobs:
   create-virtualenv:
     runs-on: ubuntu-latest
+    container: python:3.10
     steps:
       - name: source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
-
-      - name: virtualenv cache
-        uses: syphar/restore-virtualenv@v1.2
-        id: cache-virtualenv
-
-      - name: pip cache
-        uses: syphar/restore-pip-download-cache@v1
-        if: steps.cache-virtualenv.outputs.cache-hit != 'true'
-
-      - name: Install Python dependencies
-        if: steps.cache-virtualenv.outputs.cache-hit != 'true'
-        env:
-          POETRY_VERSION: 1.1.13
-        run: |
-          pip install pip==22.0.3 setuptools==60.8.2
-          curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python -
-          source $HOME/.poetry/env
-          poetry install --no-interaction -E pg -E mysql
+      - name: Python environment
+        uses: ./.github/actions/python-environment
+        with:
+          pip-version: 22.0.3
+          setuptools-version: 60.8.2
 
       - name: Log currently installed packages and versions
         run: pip list
@@ -43,18 +29,19 @@ jobs:
   build-docs:
     needs: create-virtualenv
     runs-on: ubuntu-latest
+    container: python:3.10
     strategy:
       matrix:
         language: [ 'en', 'zh' ]
     steps:
       - name: source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
-
-      - name: virtualenv cache
-        uses: syphar/restore-virtualenv@v1.2
+      - name: Python environment
+        uses: ./.github/actions/python-environment
+        with:
+          pip-version: 22.0.3
+          setuptools-version: 60.8.2
 
       - name: Download latest translations
         if: matrix.language != 'en'
@@ -104,23 +91,22 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
+    container: python:3.8
     steps:
       - name: source code
         if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/checkout@v2
-
-      - name: Set up Python
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/setup-python@v2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Release to PyPI
         if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
         env:
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
           POETRY_VERSION: 1.1.4
+          POETRY_HOME: ${{ runner.temp }}/poetry
         run: |
           pip install pip==22.0.3 setuptools==60.8.2
-          curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python -
-          source $HOME/.poetry/env
-          poetry build
-          poetry publish --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+          curl -fsSL https://install.python-poetry.org | python - --yes --version "$POETRY_VERSION"
+          "$POETRY_HOME/venv/bin/python" -m pip install setuptools==60.8.2
+          "$POETRY_HOME/bin/poetry" build
+          "$POETRY_HOME/bin/poetry" publish --username __token__ --password ${{ secrets.PYPI_TOKEN }}

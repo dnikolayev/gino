@@ -13,38 +13,23 @@ on:
   schedule:
     - cron: '24 14 * * 6'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   create-virtualenv:
     runs-on: ubuntu-latest
+    container: python:${{ matrix.python-version }}
     strategy:
       matrix:
         python-version: [ '3.6', '3.7', '3.8', '3.9', '3.10' ]
     steps:
       - name: source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: virtualenv cache
-        uses: syphar/restore-virtualenv@v1.2
-        id: cache-virtualenv
-
-      - name: pip cache
-        uses: syphar/restore-pip-download-cache@v1
-        if: steps.cache-virtualenv.outputs.cache-hit != 'true'
-
-      - name: Install Python dependencies
-        if: steps.cache-virtualenv.outputs.cache-hit != 'true'
-        env:
-          POETRY_VERSION: 1.1.13
-        run: |
-          pip install pip==21.3.1 setuptools==59.6.0
-          curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python -
-          source $HOME/.poetry/env
-          poetry install --no-interaction -E pg -E mysql
+      - name: Python environment
+        uses: ./.github/actions/python-environment
 
       - name: Log currently installed packages and versions
         run: pip list
@@ -52,15 +37,13 @@ jobs:
   check-style:
     needs: create-virtualenv
     runs-on: ubuntu-latest
+    container: python:3.10
     steps:
       - name: source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
-
-      - name: virtualenv cache
-        uses: syphar/restore-virtualenv@v1.2
+      - name: Python environment
+        uses: ./.github/actions/python-environment
 
       - name: Check code style
         run: black --check --diff src
@@ -68,6 +51,7 @@ jobs:
   test-coverage:
     needs: create-virtualenv
     runs-on: ubuntu-latest
+    container: python:3.10
     services:
       postgres:
         image: fantix/postgres-ssl:13.1
@@ -87,19 +71,16 @@ jobs:
         options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
     steps:
       - name: source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
-
-      - name: virtualenv cache
-        uses: syphar/restore-virtualenv@v1.2
+      - name: Python environment
+        uses: ./.github/actions/python-environment
 
       - name: pytest
         env:
-          DB_HOST: localhost
+          DB_HOST: postgres
           DB_USER: gino
-          MYSQL_DB_HOST: 127.0.0.1
+          MYSQL_DB_HOST: mysql
           MYSQL_DB_USER: root
         run: |
           pytest --cov=src --cov-fail-under=95 --cov-report xml
@@ -115,6 +96,7 @@ jobs:
   test-python:
     needs: [check-style, test-coverage]
     runs-on: ubuntu-latest
+    container: python:${{ matrix.python-version }}
     strategy:
       matrix:
         python-version: [ '3.6', '3.7', '3.8', '3.9', '3.10' ]
@@ -137,27 +119,23 @@ jobs:
         options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
     steps:
       - name: source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: virtualenv cache
-        uses: syphar/restore-virtualenv@v1.2
+      - name: Python environment
+        uses: ./.github/actions/python-environment
 
       - name: pytest
         env:
-          DB_HOST: localhost
+          DB_HOST: postgres
           DB_USER: gino
-          MYSQL_DB_HOST: 127.0.0.1
+          MYSQL_DB_HOST: mysql
           MYSQL_DB_USER: root
         run: pytest
 
   test-postgres:
     needs: [check-style, test-coverage]
     runs-on: ubuntu-latest
+    container: python:3.10
     strategy:
       matrix:
         postgres-version: [ '10.15', '11.10', '12.5' ]
@@ -173,23 +151,21 @@ jobs:
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
       - name: source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
-
-      - name: virtualenv cache
-        uses: syphar/restore-virtualenv@v1.2
+      - name: Python environment
+        uses: ./.github/actions/python-environment
 
       - name: pytest
         env:
-          DB_HOST: localhost
+          DB_HOST: postgres
           DB_USER: gino
         run: pytest tests/
 
   test-mysql:
     needs: [check-style, test-coverage]
     runs-on: ubuntu-latest
+    container: python:3.10
     strategy:
       matrix:
         mysql-version: [ '5.7' ]
@@ -203,23 +179,21 @@ jobs:
         options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
     steps:
       - name: source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
-
-      - name: virtualenv cache
-        uses: syphar/restore-virtualenv@v1.2
+      - name: Python environment
+        uses: ./.github/actions/python-environment
 
       - name: pytest
         env:
-          MYSQL_DB_HOST: 127.0.0.1
+          MYSQL_DB_HOST: mysql
           MYSQL_DB_USER: root
         run: pytest mysql_tests/
 
   test-low-deps:
     needs: [check-style, test-coverage]
     runs-on: ubuntu-latest
+    container: python:3.6
     services:
       postgres:
         image: fantix/postgres-ssl:9.6.20
@@ -239,42 +213,34 @@ jobs:
         options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
     steps:
       - name: source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.6
-
-      - name: virtualenv cache
-        uses: syphar/restore-virtualenv@v1.2
+      - name: Python environment
+        uses: ./.github/actions/python-environment
 
       - name: Use lowest dependencies versions
         run: pip install asyncpg==0.18 SQLAlchemy==1.3 pytest
 
       - name: pytest
         env:
-          DB_HOST: localhost
+          DB_HOST: postgres
           DB_USER: gino
-          MYSQL_DB_HOST: 127.0.0.1
+          MYSQL_DB_HOST: mysql
           MYSQL_DB_USER: root
         run: pytest tests/ mysql_tests/
 
   update-translations:
     needs: [check-style, test-coverage]
     runs-on: ubuntu-latest
+    container: python:3.10
     steps:
       - name: source code
         if: github.ref == 'refs/heads/master'
-        uses: actions/checkout@v2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Set up Python
+      - name: Python environment
         if: github.ref == 'refs/heads/master'
-        uses: actions/setup-python@v2
-
-      - name: virtualenv cache
-        if: github.ref == 'refs/heads/master'
-        uses: syphar/restore-virtualenv@v1.2
+        uses: ./.github/actions/python-environment
 
       - name: Upload pot to Transifex
         if: github.ref == 'refs/heads/master'
@@ -287,14 +253,17 @@ jobs:
 
   analyze:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v1
+        uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
         with:
           languages: python
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v1
+        uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
